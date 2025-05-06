@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zillow Data Viewer + Indicators</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@^4"></script> <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script> <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.min.js"></script> <style>
+        /* --- CSS Styles Embedded --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 20px;
+            background-color: #f8f9fa; /* Light gray background */
+            line-height: 1.6;
+            color: #343a40; /* Dark gray text */
+        }
+
+        h1 {
+            color: #007bff; /* Bootstrap primary blue */
+            text-align: center;
+            margin-bottom: 15px; /* Reduced margin */
+        }
+         p.subtitle {
+            text-align: center;
+            margin-top: -10px;
+            margin-bottom: 25px;
+            color: #6c757d;
+         }
+
+        .controls {
+            text-align: center;
+            margin-bottom: 15px; /* Reduced margin */
+            padding: 15px;
+            background-color: #e9ecef; /* Lighter gray for controls area */
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex; /* Use flexbox for alignment */
+            justify-content: center; /* Center items horizontally */
+            align-items: center; /* Center items vertically */
+            flex-wrap: wrap; /* Allow wrapping on smaller screens */
+            gap: 15px; /* Add space between control elements */
+        }
+
+        .controls .input-group {
+            display: flex;
+            align-items: center;
+        }
+
+        .controls label {
+            margin-right: 5px; /* Reduced margin */
+            font-weight: 500; /* Slightly bolder label */
+            white-space: nowrap; /* Prevent label text wrapping */
+        }
+
+        /* Style the input field */
+        .controls input[type="text"] {
+            padding: 10px;
+            /* margin-right: 10px; */ /* Removed margin, using gap now */
+            width: 100px; /* Slightly reduced width */
+            border: 1px solid #ced4da; /* Standard border */
+            border-radius: 4px;
+            font-size: 1rem;
+            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        }
+        .controls input[type="text"]:focus {
+            border-color: #80bdff; /* Blue border on focus */
+            outline: 0;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25); /* Blue glow on focus */
+        }
+
+        /* Style the button */
+        .controls button {
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #007bff; /* Blue button */
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            transition: background-color 0.2s ease-in-out;
+        }
+        .controls button:hover {
+             background-color: #0056b3; /* Darker blue on hover */
+        }
+        .controls button:disabled {
+             background-color: #6c757d; /* Gray when disabled */
+             cursor: not-allowed;
+        }
+
+        /* Style the metric toggles */
+        .metric-toggles {
+            display: flex;
+            flex-wrap: wrap; /* Allow wrapping */
+            justify-content: center; /* Center items */
+            gap: 10px 20px; /* Row and column gap */
+            margin-top: 5px;
+            font-size: 0.9rem;
+        }
+         .metric-toggles label {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+         }
+
+
+        /* Style the status message area */
+        #statusMessage {
+            text-align: center;
+            margin: 15px 0; /* Reduced margin */
+            min-height: 24px; /* Reserve space to prevent layout shifts */
+            font-weight: 500;
+            font-size: 1.05rem;
+        }
+        /* Status message styling based on class */
+        .status-loading { color: #6c757d; } /* Gray */
+        .status-error { color: #dc3545; } /* Red */
+        .status-info { color: #17a2b8; } /* Teal */
+        .status-success { color: #28a745; } /* Green */
+
+
+        /* Style the chart container */
+        .chart-container {
+            width: 95%; /* Responsive width */
+            max-width: 1200px; /* Wider for more indicators */
+            margin: 20px auto; /* Center the container */
+            background-color: #ffffff; /* White background for the chart area */
+            padding: 25px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1); /* Subtle shadow */
+            border-radius: 8px;
+            position: relative; /* Needed for potential absolute positioning inside */
+        }
+
+        /* Ensure canvas is responsive within its container */
+        #zillowChart {
+            max-height: 600px; /* Increased height */
+            width: 100% !important; /* Force chart to fill container width */
+        }
+    </style>
+</head>
+<body>
+    <h1>Zillow Home Value Index Viewer</h1>
+    <p class="subtitle">With SMA, Linear Regression, RSI &amp; MACD Indicators</p>
+
+    <div class="controls">
+        <div class="input-group">
+            <label for="zipInput">Enter ZIP Code:</label>
+            <input type="text" id="zipInput" placeholder="e.g., 90210" inputmode="numeric" pattern="[0-9]{5}" maxlength="5">
+            <button id="fetchButton">Show Chart</button>
+        </div>
+        <div class="metric-toggles" id="metricToggles" style="display: none;"> <label>
+                <input type="checkbox" id="toggleSma" checked> SMA (12)
+            </label>
+            <label>
+                <input type="checkbox" id="toggleRegression" checked> Trend
+            </label>
+             <label>
+                <input type="checkbox" id="toggleRsi" checked> RSI (14)
+            </label>
+             <label>
+                <input type="checkbox" id="toggleMacd" checked> MACD (12,26,9)
+            </label>
+        </div>
+    </div>
+
+    <div id="statusMessage" class="status-info">Enter a 5-digit ZIP code to view data.</div>
+
+    <div class="chart-container">
+        <canvas id="zillowChart"></canvas>
+    </div>
+
+<script>
+    // --- JavaScript Logic Embedded ---
+
+    // --- DOM Elements ---
+    const zipInput = document.getElementById('zipInput');
+    const fetchButton = document.getElementById('fetchButton');
+    const statusMessage = document.getElementById('statusMessage');
+    const chartCanvas = document.getElementById('zillowChart');
+    const ctx = chartCanvas.getContext('2d'); // Get canvas context for Chart.js
+    const metricTogglesDiv = document.getElementById('metricToggles');
+    const toggleSmaCheckbox = document.getElementById('toggleSma');
+    const toggleRegressionCheckbox = document.getElementById('toggleRegression');
+    const toggleRsiCheckbox = document.getElementById('toggleRsi');
+    const toggleMacdCheckbox = document.getElementById('toggleMacd');
+
+
+    // --- Chart Instance Variable ---
+    let zillowChartInstance = null; // Holds the active Chart.js instance
+
+    // --- Constants ---
+    const SMA_PERIOD = 12; // Period for Simple Moving Average
+    const RSI_PERIOD = 14; // Period for Relative Strength Index
+    const MACD_FAST_PERIOD = 12; // Fast EMA period for MACD
+    const MACD_SLOW_PERIOD = 26; // Slow EMA period for MACD
+    const MACD_SIGNAL_PERIOD = 9; // Signal line EMA period for MACD
+
+    // --- Calculation Functions ---
+
+    /**
+     * Updates the status message area with text and styling.
+     * @param {string} message - The message to display.
+     * @param {string} [type='info'] - The type of message ('info', 'loading', 'success', 'error').
+     */
+    function setStatus(message, type = 'info') {
+        statusMessage.textContent = message;
+        statusMessage.className = `status-${type}`; // Apply CSS class for color styling
+        console.log(`[Status ${type}]: ${message}`); // Log status to console
+    }
+
+    /**
+     * Calculates Simple Moving Average (SMA). Handles potential nulls/NaNs.
+     * @param {number[]} data - Array of numerical data points.
+     * @param {number} period - The window size for the moving average.
+     * @returns {Array<number|null>} - Array of SMA values, with nulls at the beginning or where calculation fails.
+     */
+    function calculateSMA(data, period) {
+        if (!data || data.length < period) return new Array(data.length).fill(null);
+        const sma = new Array(period - 1).fill(null); // Pad beginning with nulls
+        let sum = 0;
+        // Calculate initial sum for the first period
+        for (let i = 0; i < period; i++) {
+            if (typeof data[i] !== 'number' || isNaN(data[i])) return new Array(data.length).fill(null); // Cannot calculate if initial data is bad
+            sum += data[i];
+        }
+        sma.push(sum / period); // Add first SMA value
+
+        // Calculate subsequent SMA values efficiently
+        for (let i = period; i < data.length; i++) {
+            // Check if both the incoming and outgoing data points are valid numbers
+            if (typeof data[i - period] !== 'number' || isNaN(data[i - period]) || typeof data[i] !== 'number' || isNaN(data[i])) {
+                sma.push(null); // Push null if any required data point is invalid
+                // Consider resetting sum here if a more robust calculation is needed after NaNs
+                continue;
+            }
+            sum = sum - data[i - period] + data[i]; // Update sum by subtracting oldest and adding newest
+            sma.push(sum / period);
+        }
+        return sma;
+    }
+
+    /**
+     * Calculates Linear Regression trend line (y = mx + b). Filters out non-numeric data.
+     * @param {number[]} yValues - Array of numerical data points (dependent variable).
+     * @returns {{slope: number, intercept: number, regressionLine: Array<number|null>}} - Object with slope, intercept, and calculated line points (null where original data was invalid).
+     */
+    function calculateLinearRegression(yValues) {
+        // Filter out non-numeric values while keeping track of their original index
+        const validData = yValues
+            .map((y, index) => (typeof y === 'number' && !isNaN(y) ? { x: index, y: y } : null))
+            .filter(point => point !== null);
+
+        const n = validData.length;
+        // Need at least two valid points for a regression line
+        if (n < 2) return { slope: 0, intercept: 0, regressionLine: new Array(yValues.length).fill(null) };
+
+        let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+        // Calculate sums based only on valid data points
+        validData.forEach(point => {
+            sumX += point.x;
+            sumY += point.y;
+            sumXY += point.x * point.y;
+            sumXX += point.x * point.x;
+        });
+
+        // Calculate slope (m) and intercept (b) using least squares method
+        const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+        const intercept = (sumY - slope * sumX) / n;
+
+        // Calculate the y-value for the regression line for *all* original indices
+        const regressionLine = yValues.map((_, i) => slope * i + intercept);
+
+        return { slope, intercept, regressionLine };
+    }
+
+    /**
+     * Calculates Exponential Moving Average (EMA). Handles potential nulls/NaNs more robustly.
+     * @param {number[]} data - Array of numerical data points (can contain null/NaN).
+     * @param {number} period - The window size for the EMA.
+     * @returns {Array<number|null>} - Array of EMA values.
+     */
+     function calculateEMA(data, period) {
+        const ema = new Array(data.length).fill(null);
+        if (!data || data.length < period) return ema; // Return array of nulls if not enough data
+
+        const k = 2 / (period + 1); // Smoothing factor
+        let firstValidIndex = -1;
+        let sum = 0;
+
+        // Find the first 'period' consecutive valid numbers to calculate the initial SMA
+        for (let i = 0; i <= data.length - period; i++) {
+            let validSlice = true;
+            sum = 0;
+            for (let j = 0; j < period; j++) {
+                if (typeof data[i + j] !== 'number' || isNaN(data[i + j])) {
+                    validSlice = false;
+                    break;
+                }
+                sum += data[i + j];
+            }
+            if (validSlice) {
+                firstValidIndex = i + period - 1;
+                ema[firstValidIndex] = sum / period; // First EMA is the SMA
+                break; // Found the first valid starting point
+            }
+        }
+
+        // If no valid starting period was found, return all nulls
+        if (firstValidIndex === -1) {
+            return ema;
+        }
+
+        // Calculate subsequent EMA values from the first valid point
+        for (let i = firstValidIndex + 1; i < data.length; i++) {
+             // Check if current data point is a valid number AND the previous EMA was calculated (is not null)
+             if (typeof data[i] === 'number' && !isNaN(data[i]) && ema[i - 1] !== null) {
+                 // EMA formula
+                 ema[i] = (data[i] * k) + (ema[i - 1] * (1 - k));
+             } else {
+                 // Propagate null if current data is invalid or previous EMA is null
+                 ema[i] = null;
+             }
+        }
+        return ema;
+    }
+
+
+    /**
+     * Calculates Relative Strength Index (RSI). Handles potential nulls/NaNs.
+     * @param {number[]} data - Array of numerical data points.
+     * @param {number} period - The lookback period for RSI.
+     * @returns {Array<number|null>} - Array of RSI values (0-100).
+     */
+    function calculateRSI(data, period) {
+        if (!data || data.length <= period) return new Array(data.length).fill(null);
+
+        const rsi = new Array(data.length).fill(null);
+        let gains = [];
+        let losses = [];
+        let avgGain = NaN; // Use NaN to indicate uninitialized state
+        let avgLoss = NaN;
+
+        // Calculate initial average gain and loss over the first 'period' changes
+        for (let i = 1; i <= period; i++) {
+            // Ensure both current and previous data points are valid numbers
+            if (typeof data[i] !== 'number' || isNaN(data[i]) || typeof data[i-1] !== 'number' || isNaN(data[i-1])) {
+                 return new Array(data.length).fill(null); // Cannot calculate if initial data is bad
+            }
+            const change = data[i] - data[i - 1];
+            gains.push(change > 0 ? change : 0); // Store gain or 0
+            losses.push(change < 0 ? -change : 0); // Store absolute loss or 0
+        }
+
+        // Calculate the first average gain and loss
+        avgGain = gains.reduce((a, b) => a + b, 0) / period;
+        avgLoss = losses.reduce((a, b) => a + b, 0) / period;
+
+        // Calculate the first RSI value
+        if (avgLoss === 0) {
+            rsi[period] = 100; // If no losses, RSI is 100
+        } else {
+            const rs = avgGain / avgLoss; // Relative Strength
+            rsi[period] = 100 - (100 / (1 + rs)); // RSI formula
+        }
+
+        // Calculate subsequent RSI values using Wilder's Smoothing Method
+        for (let i = period + 1; i < data.length; i++) {
+             // Ensure current and previous data points are valid numbers
+             if (typeof data[i] !== 'number' || isNaN(data[i]) || typeof data[i-1] !== 'number' || isNaN(data[i-1])) {
+                rsi[i] = null; // Propagate null if data is invalid
+                avgGain = NaN; // Invalidate averages for next iteration
+                avgLoss = NaN;
+                continue;
+             }
+
+            // Calculate current gain and loss
+            const change = data[i] - data[i - 1];
+            const gain = change > 0 ? change : 0;
+            const loss = change < 0 ? -change : 0;
+
+            // Check if previous averages were valid (not NaN)
+            if (isNaN(avgGain) || isNaN(avgLoss)) {
+                // If averages became invalid (due to prior null data), attempt to recalculate
+                // using a simple average of the last 'period' changes.
+                gains = []; losses = [];
+                let canRecalculate = true;
+                for (let j = i - period + 1; j <= i; j++) {
+                     if (typeof data[j] !== 'number' || isNaN(data[j]) || typeof data[j-1] !== 'number' || isNaN(data[j-1])) {
+                         canRecalculate = false; break;
+                     }
+                     const recalcChange = data[j] - data[j-1];
+                     gains.push(recalcChange > 0 ? recalcChange : 0);
+                     losses.push(recalcChange < 0 ? -recalcChange : 0);
+                }
+                if (canRecalculate) {
+                    avgGain = gains.reduce((a, b) => a + b, 0) / period;
+                    avgLoss = losses.reduce((a, b) => a + b, 0) / period;
+                } else {
+                     // If recalculation fails, RSI remains null
+                     rsi[i] = null; continue;
+                }
+            } else {
+                 // Apply Wilder's Smoothing for subsequent averages
+                 avgGain = ((avgGain * (period - 1)) + gain) / period;
+                 avgLoss = ((avgLoss * (period - 1)) + loss) / period;
+            }
+
+            // Calculate RSI for the current period
+            if (avgLoss === 0) {
+                rsi[i] = 100;
+            } else {
+                const rs = avgGain / avgLoss;
+                rsi[i] = 100 - (100 / (1 + rs));
+            }
+        }
+
+        return rsi;
+    }
+
+    /**
+     * Calculates Moving Average Convergence Divergence (MACD).
+     * @param {number[]} data - Array of numerical data points.
+     * @param {number} fastPeriod - Period for the fast EMA.
+     * @param {number} slowPeriod - Period for the slow EMA.
+     * @param {number} signalPeriod - Period for the signal line EMA.
+     * @returns {{macdLine: Array<number|null>, signalLine: Array<number|null>, histogram: Array<number|null>}} - Object containing the MACD components.
+     */
+    function calculateMACD(data, fastPeriod, slowPeriod, signalPeriod) {
+        // Calculate the fast and slow EMAs of the original data
+        const emaFast = calculateEMA(data, fastPeriod);
+        const emaSlow = calculateEMA(data, slowPeriod);
+
+        // If EMAs couldn't be calculated (e.g., due to insufficient initial data), return null arrays
+        if (!emaFast || !emaSlow) {
+             console.warn("Could not calculate base EMAs for MACD.");
+             return {
+                macdLine: new Array(data.length).fill(null),
+                signalLine: new Array(data.length).fill(null),
+                histogram: new Array(data.length).fill(null)
+             };
+        }
+
+
+        // Calculate the MACD line (Fast EMA - Slow EMA)
+        const macdLine = new Array(data.length).fill(null);
+        for (let i = 0; i < data.length; i++) {
+            // Ensure both EMAs are valid numbers for this point
+            if (emaFast[i] !== null && emaSlow[i] !== null) {
+                macdLine[i] = emaFast[i] - emaSlow[i];
+            }
+        }
+
+        // Calculate the Signal line (EMA of the MACD line)
+        const signalLine = calculateEMA(macdLine, signalPeriod); // Use the improved calculateEMA
+
+        // Calculate the MACD Histogram (MACD Line - Signal Line)
+        const histogram = new Array(data.length).fill(null);
+        for (let i = 0; i < data.length; i++) {
+            // Ensure both MACD line and Signal line are valid numbers
+            if (macdLine[i] !== null && signalLine[i] !== null) {
+                histogram[i] = macdLine[i] - signalLine[i];
+            }
+        }
+
+        return { macdLine, signalLine, histogram };
+    }
+
+
+     /**
+      * Main function: Fetches data, calculates metrics, renders chart.
+      */
+    async function fetchAndDisplayChart() {
+        const zipCode = zipInput.value.trim();
+        setStatus(''); // Clear status
+        metricTogglesDiv.style.display = 'none'; // Hide toggles until data is ready
+
+        // Validate ZIP code input
+        if (!zipCode || !/^\d{5}$/.test(zipCode)) {
+            setStatus('Please enter a valid 5-digit ZIP code.', 'error');
+            return;
+        }
+
+        fetchButton.disabled = true; // Disable button during fetch
+        setStatus(`Fetching data for ${zipCode}...`, 'loading');
+
+        // Destroy previous chart instance if it exists
+        if (zillowChartInstance) {
+            zillowChartInstance.destroy();
+            zillowChartInstance = null;
+        }
+
+        try {
+            // Fetch data from the Node.js backend API
+            const apiUrl = `/api/data/${zipCode}`;
+            const response = await fetch(apiUrl);
+
+            // Handle HTTP errors
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: `Server error (Status: ${response.status})` }));
+                setStatus(errorData.error || `Error fetching data (Status: ${response.status})`, 'error');
+                fetchButton.disabled = false; // Re-enable button on error
+                return;
+            }
+
+            // Parse successful response
+            const result = await response.json();
+            const timeSeriesData = result.data;
+
+            // Check if data is valid
+            if (!timeSeriesData || Object.keys(timeSeriesData).length === 0) {
+                 setStatus(`No time series data found for ZIP code ${zipCode}.`, 'error');
+                 fetchButton.disabled = false; // Re-enable button
+                return;
+            }
+
+            // --- Prepare data and Calculate All Metrics ---
+            const labels = Object.keys(timeSeriesData).sort(); // Sort dates
+            // *** FIX: Convert string values from API to numbers ***
+            const values = labels.map(date => Number(timeSeriesData[date])); // Extract values AND convert to number
+
+            console.log("Original Values:", values); // Log the *numeric* values
+
+            const smaValues = calculateSMA(values, SMA_PERIOD);
+            console.log("SMA Values:", smaValues); // Log calculated SMA
+
+            const { regressionLine } = calculateLinearRegression(values);
+            console.log("Regression Line:", regressionLine); // Log calculated regression
+
+            const rsiValues = calculateRSI(values, RSI_PERIOD);
+            console.log("RSI Values:", rsiValues); // Log calculated RSI
+
+            const { macdLine, signalLine, histogram } = calculateMACD(values, MACD_FAST_PERIOD, MACD_SLOW_PERIOD, MACD_SIGNAL_PERIOD);
+            console.log("MACD Line:", macdLine); // Log calculated MACD line
+            console.log("Signal Line:", signalLine); // Log calculated Signal line
+            console.log("Histogram:", histogram); // Log calculated Histogram
+
+
+            // --- Create the Chart.js instance ---
+            metricTogglesDiv.style.display = 'flex'; // Show metric toggles
+
+            zillowChartInstance = new Chart(ctx, {
+                type: 'line', // Default chart type is line
+                data: {
+                    labels: labels, // X-axis labels (dates)
+                    datasets: [
+                        // --- Price Data ---
+                        {
+                            label: `ZHVI ${zipCode}`, // Legend label
+                            data: values, // Y-values
+                            borderColor: 'rgb(0, 123, 255)', // Blue line
+                            backgroundColor: 'rgba(0, 123, 255, 0.1)', // Light blue fill
+                            yAxisID: 'y', // Assign to the main Y-axis (left)
+                            order: 10 // Draw price line on top
+                        },
+                        // --- SMA ---
+                        {
+                            label: `SMA (${SMA_PERIOD})`,
+                            data: smaValues,
+                            borderColor: 'rgb(255, 159, 64)', // Orange line
+                            tension: 0.1, // Slight curve
+                            pointRadius: 0, // No points on SMA line
+                            borderDash: [5, 5], // Dashed line style
+                            hidden: !toggleSmaCheckbox.checked, // Initial visibility based on checkbox
+                            yAxisID: 'y', // Plot on the main Y-axis
+                            order: 9 // Draw below price
+                        },
+                        // --- Regression ---
+                        {
+                            label: 'Trend',
+                            data: regressionLine,
+                            borderColor: 'rgb(108, 117, 125)', // Gray line
+                            tension: 0, // Straight line
+                            pointRadius: 0, // No points on trend line
+                            borderWidth: 2, // Slightly thicker line
+                            hidden: !toggleRegressionCheckbox.checked, // Initial visibility
+                            yAxisID: 'y', // Plot on the main Y-axis
+                            order: 8 // Draw below SMA
+                        },
+                         // --- RSI ---
+                        {
+                            label: `RSI (${RSI_PERIOD})`,
+                            data: rsiValues,
+                            borderColor: 'rgb(111, 66, 193)', // Purple line
+                            backgroundColor: 'rgba(111, 66, 193, 0.1)', // Light purple fill (optional)
+                            fill: false, // Typically RSI is not filled
+                            tension: 0.1,
+                            pointRadius: 0,
+                            borderWidth: 1.5,
+                            hidden: !toggleRsiCheckbox.checked, // Initial visibility
+                            yAxisID: 'y1', // Assign to the second Y-axis (right, top)
+                            order: 7 // Draw below trend
+                        },
+                         // --- MACD Line ---
+                        {
+                            label: `MACD (${MACD_FAST_PERIOD},${MACD_SLOW_PERIOD})`,
+                            data: macdLine,
+                            borderColor: 'rgb(23, 162, 184)', // Teal line
+                            fill: false,
+                            tension: 0.1,
+                            pointRadius: 0,
+                            borderWidth: 1.5,
+                            hidden: !toggleMacdCheckbox.checked, // Initial visibility
+                            yAxisID: 'y2', // Assign to the third Y-axis (right, bottom)
+                            order: 6 // Draw below RSI
+                        },
+                        // --- MACD Signal Line ---
+                        {
+                            label: `Signal (${MACD_SIGNAL_PERIOD})`,
+                            data: signalLine,
+                            borderColor: 'rgb(220, 53, 69)', // Red line
+                            fill: false,
+                            tension: 0.1,
+                            pointRadius: 0,
+                            borderWidth: 1.5,
+                             borderDash: [3, 3], // Different dash style for signal
+                            hidden: !toggleMacdCheckbox.checked, // Initial visibility
+                            yAxisID: 'y2', // Plot on the third Y-axis
+                            order: 5 // Draw below MACD line
+                        },
+                        // --- MACD Histogram ---
+                        {
+                            label: 'MACD Hist',
+                            data: histogram,
+                            // Dynamically color bars based on positive/negative value
+                            backgroundColor: (context) => {
+                                const value = context.raw; // Get the raw data value for the bar
+                                return value >= 0 ? 'rgba(40, 167, 69, 0.5)' : 'rgba(220, 53, 69, 0.5)'; // Green/Red with transparency
+                            },
+                            borderColor: (context) => {
+                                const value = context.raw;
+                                return value >= 0 ? 'rgba(40, 167, 69, 0.8)' : 'rgba(220, 53, 69, 0.8)'; // Darker border
+                            },
+                            borderWidth: 1,
+                            type: 'bar', // Explicitly set this dataset type to 'bar'
+                            hidden: !toggleMacdCheckbox.checked, // Initial visibility
+                            yAxisID: 'y2', // Plot on the third Y-axis
+                            order: 4 // Draw histogram first among MACD components
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, // Chart resizes with container
+                    maintainAspectRatio: false, // Allows custom height/width ratio
+                    interaction: { // Settings for hover/tooltip interactions
+                        mode: 'index', // Find items in all datasets at the same X-axis index
+                        intersect: false, // Tooltips appear even if not directly over an element
+                    },
+                    scales: { // Configure chart axes
+                        // --- Main Y-Axis (Price, SMA, Trend) ---
+                        y: {
+                            type: 'linear', // Numerical axis
+                            display: true, // Show the axis
+                            position: 'left', // Place on the left side
+                            beginAtZero: false, // Axis doesn't need to start at 0
+                            title: { display: true, text: 'Home Value Index (USD)' }, // Axis label
+                            ticks: { // Customize tick labels
+                                callback: function(value) { return '$' + value.toLocaleString(); } // Format as currency
+                             }
+                        },
+                        // --- Second Y-Axis (RSI) ---
+                        y1: {
+                            type: 'linear',
+                            display: true, // Show the axis
+                            position: 'right', // Place on the right side
+                            min: 0, // RSI scale is 0 to 100
+                            max: 100,
+                            grid: { // Configure grid lines for this axis
+                                drawOnChartArea: false, // Don't draw grid lines across the main chart area
+                            },
+                            title: { display: true, text: 'RSI (14)' }, // Axis label
+                             ticks: {
+                                stepSize: 20 // Set distance between ticks
+                             }
+                        },
+                         // --- Third Y-Axis (MACD) ---
+                        y2: {
+                            type: 'linear',
+                            display: true, // Show the axis
+                            position: 'right', // Place on the right side (will appear below RSI if space allows)
+                            grid: {
+                                drawOnChartArea: false, // Don't draw grid lines across the main chart area
+                            },
+                            title: { display: true, text: 'MACD' }, // Axis label
+                             ticks: {
+                                // Format MACD values to 2 decimal places
+                                callback: function(value) { return value.toFixed(2); }
+                             }
+                        },
+                        // --- X-Axis (Date) ---
+                        x: {
+                             type: 'category', // Change type from 'time' to 'category'
+                             // Labels are provided directly in the data.labels array
+                             title: { display: true, text: 'Date' } // Keep the axis title
+                             // No 'time' block needed for 'category' type
+                        }
+                    },
+                    plugins: { // Configure chart plugins
+                        tooltip: {
+                            callbacks: {
+                                // Customize tooltip labels for each dataset point
+                                label: function(context) {
+                                    let label = context.dataset.label || ''; // Get dataset label (e.g., "MACD Hist")
+                                    if (label) { label += ': '; }
+
+                                    // Check if parsed y-value exists and is a valid number
+                                    // Accessing context.raw might be more reliable for bar charts sometimes
+                                    const value = context.raw; // Try using context.raw first for bar charts
+
+                                    if (value !== null && typeof value === 'number' && !isNaN(value)) {
+                                        // Format based on which Y-axis the dataset uses
+                                        if (context.dataset.yAxisID === 'y') { // Price/SMA/Trend
+                                            label += '$' + value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+                                        } else if (context.dataset.yAxisID === 'y1') { // RSI
+                                            label += value.toFixed(2);
+                                        } else if (context.dataset.yAxisID === 'y2') { // MACD Line, Signal, Histogram
+                                            label += value.toFixed(4); // Use consistent precision for MACD axis
+                                        } else {
+                                            label += value.toLocaleString(); // Default formatting if axis unknown
+                                        }
+                                    } else {
+                                        // Fallback check using context.parsed.y if context.raw wasn't suitable
+                                        if (context.parsed && typeof context.parsed.y === 'number' && !isNaN(context.parsed.y)) {
+                                             const parsedValue = context.parsed.y;
+                                             if (context.dataset.yAxisID === 'y') { label += '$' + parsedValue.toLocaleString(undefined, { maximumFractionDigits: 0 }); }
+                                             else if (context.dataset.yAxisID === 'y1') { label += parsedValue.toFixed(2); }
+                                             else if (context.dataset.yAxisID === 'y2') { label += parsedValue.toFixed(4); }
+                                             else { label += parsedValue.toLocaleString(); }
+                                        } else {
+                                             label += 'N/A'; // Indicate missing or invalid data if both checks fail
+                                        }
+                                    }
+                                    return label;
+                                }
+                            }
+                        },
+                         title: { // Chart title configuration
+                            display: true,
+                            text: `Zillow ZHVI & Indicators for ZIP Code ${zipCode}`,
+                            font: { size: 16 }
+                        },
+                        legend: { // Legend configuration
+                             position: 'top', // Place legend above chart
+                             // Custom behavior when a legend item is clicked
+                             onClick: (e, legendItem, legend) => {
+                                const index = legendItem.datasetIndex; // Index of the clicked dataset
+                                const ci = legend.chart; // Chart instance
+                                // Execute the default legend click behavior (toggles visibility)
+                                Chart.defaults.plugins.legend.onClick(e, legendItem, legend);
+
+                                // --- Synchronize checkbox state with legend visibility ---
+                                if (index === 1) toggleSmaCheckbox.checked = ci.isDatasetVisible(index); // SMA
+                                else if (index === 2) toggleRegressionCheckbox.checked = ci.isDatasetVisible(index); // Trend
+                                else if (index === 3) toggleRsiCheckbox.checked = ci.isDatasetVisible(index); // RSI
+                                // If any MACD component (line, signal, hist) is clicked...
+                                else if (index >= 4 && index <= 6) {
+                                     const visible = ci.isDatasetVisible(index); // Get the new visibility state
+                                     toggleMacdCheckbox.checked = visible; // Sync the main MACD checkbox
+                                     // Ensure all MACD components match this visibility state
+                                     ci.setDatasetVisibility(4, visible);
+                                     ci.setDatasetVisibility(5, visible);
+                                     ci.setDatasetVisibility(6, visible);
+                                     ci.update('none'); // Update chart immediately without animation
+                                }
+                             }
+                        }
+                    },
+                    hover: { // General hover configuration
+                        mode: 'index', // Find items across datasets at the same index
+                        intersect: false // Trigger hover even when not directly over an element
+                    },
+                    animation: { duration: 300 } // Faster chart animation
+                }
+            });
+
+            setStatus(`Displaying chart for ${zipCode}.`, 'success'); // Set success status
+
+        } catch (error) {
+            // Handle errors during fetch or chart creation
+            console.error('Client-side Fetch/Chart Error:', error);
+            setStatus('Error fetching or displaying data. Check console.', 'error');
+            // Clean up chart instance if an error occurred
+            if (zillowChartInstance) { zillowChartInstance.destroy(); zillowChartInstance = null; }
+        } finally {
+             // Re-enable the fetch button whether successful or not
+             fetchButton.disabled = false;
+        }
+    }
+
+    // --- Event Listeners Setup ---
+
+    // Listener for the main "Show Chart" button
+    fetchButton.addEventListener('click', fetchAndDisplayChart);
+
+    // Listener for pressing Enter in the ZIP code input field
+    zipInput.addEventListener('keypress', function(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault(); // Prevent default form submission behavior
+            fetchAndDisplayChart(); // Trigger chart update
+        }
+    });
+
+    /**
+     * Helper function to set up event listeners for metric toggle checkboxes.
+     * @param {HTMLInputElement} checkbox - The checkbox element.
+     * @param {number[]} datasetIndices - Array of dataset indices controlled by this checkbox.
+     */
+    function setupToggle(checkbox, datasetIndices) {
+         checkbox.addEventListener('change', function() {
+            if (zillowChartInstance) {
+                // Toggle visibility for all associated datasets
+                datasetIndices.forEach(index => {
+                     // Check if the dataset index is valid for the current chart
+                     if (index < zillowChartInstance.data.datasets.length) {
+                         zillowChartInstance.setDatasetVisibility(index, this.checked);
+                     }
+                });
+                // Update the chart to reflect visibility changes without animation
+                zillowChartInstance.update('none');
+            }
+        });
+    }
+
+    // Set up toggles for each indicator group
+    setupToggle(toggleSmaCheckbox, [1]); // SMA is dataset index 1
+    setupToggle(toggleRegressionCheckbox, [2]); // Regression is dataset index 2
+    setupToggle(toggleRsiCheckbox, [3]); // RSI is dataset index 3
+    setupToggle(toggleMacdCheckbox, [4, 5, 6]); // MACD components are indices 4, 5, 6
+
+
+    // Initial status message when the page loads
+    setStatus("Ready. Enter a 5-digit ZIP code.", 'info');
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "zillow-web-app",
+  "version": "1.0.0",
+  "description": "Node.js server to cache Zillow data and host a frontend viewer.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "zillow",
+    "cache",
+    "api",
+    "express",
+    "chartjs"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.2", 
+    "csv-parse": "^5.5.6",
+    "express": "^4.19.2"
+  }
+}
